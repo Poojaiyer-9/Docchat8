@@ -22,15 +22,13 @@ def clear_collection():
     mixing old and new document chunks. This ensures answers come only from
     the currently uploaded document.
     """
-    # Chroma doesn't have a direct "clear all" method, so we delete and recreate
-    try:
-        client.delete_collection(name="docs")
-    except Exception:
-        pass
-    # Recreate empty collection
-    globals()["collection"] = client.get_or_create_collection(
-        name="docs", embedding_function=embedding_function
-    )
+    # Keep the collection object alive because rag.py holds its own handle to it.
+    # Deleting and recreating the collection leaves that handle pointing at a
+    # collection ID that no longer exists.
+    existing = collection.get()
+    ids = existing.get("ids", [])
+    if ids:
+        collection.delete(ids=ids)
 
 
 def get_indexed_docs() -> list[dict]:
