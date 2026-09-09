@@ -33,7 +33,7 @@ OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 DEFAULT_MODELS = {
     "anthropic": "claude-haiku-4-5-20251001",
-    "groq": "llama-3.1-8b-instant",
+    "groq": "llama-3.3-70b-versatile",
     "openai": "gpt-4o-mini",
     "ollama": "llama3.2",
 }
