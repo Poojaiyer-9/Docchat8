@@ -34,6 +34,7 @@ OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 DEFAULT_MODELS = {
     "anthropic": "claude-haiku-4-5-20251001",
     "groq": "openai/gpt-oss-20b",
+    "openrouter": "openai/gpt-oss-20b",
     "openai": "gpt-4o-mini",
     "ollama": "llama3.2",
 }
@@ -42,6 +43,7 @@ DEFAULT_MODELS = {
 PROVIDER_INFO = {
     "anthropic": {"label": "Anthropic (Claude)", "key_url": "https://console.anthropic.com/settings/keys"},
     "groq": {"label": "Groq (free tier)", "key_url": "https://console.groq.com/keys"},
+    "openrouter": {"label": "OpenRouter", "key_url": "https://openrouter.ai/keys"},
     "openai": {"label": "OpenAI", "key_url": "https://platform.openai.com/api-keys"},
     "ollama": {"label": "Ollama (local only)", "key_url": None},
 }
@@ -67,6 +69,8 @@ def active_provider() -> str:
         return "anthropic"
     if _get_config("GROQ_API_KEY"):
         return "groq"
+    if _get_config("OPENROUTER_API_KEY"):
+        return "openrouter"
     if _get_config("OPENAI_API_KEY"):
         return "openai"
     return "ollama"
@@ -130,6 +134,23 @@ def _generate_groq(system_prompt: str, user_prompt: str) -> str:
     )
 
 
+def _generate_openrouter(system_prompt: str, user_prompt: str) -> str:
+    api_key = _get_config("OPENROUTER_API_KEY")
+    model = _get_config("OPENROUTER_MODEL") or DEFAULT_MODELS["openrouter"]
+    response = httpx.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "HTTP-Referer": "https://docchat.streamlit.app",
+            "X-Title": "DocChat",
+        },
+        json={"model": model, "messages": _chat_messages(system_prompt, user_prompt)},
+        timeout=60,
+    )
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"]
+
+
 def _generate_openai(system_prompt: str, user_prompt: str) -> str:
     api_key = _get_config("OPENAI_API_KEY")
     model = _get_config("OPENAI_MODEL") or DEFAULT_MODELS["openai"]
@@ -164,6 +185,7 @@ def _generate_ollama(system_prompt: str, user_prompt: str) -> str:
 _PROVIDERS = {
     "anthropic": _generate_anthropic,
     "groq": _generate_groq,
+    "openrouter": _generate_openrouter,
     "openai": _generate_openai,
     "ollama": _generate_ollama,
 }
