@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+chromadb
+pydantic
+pymupdf
+httpx
+gtts
+SpeechRecognition
+streamlit
+python-dotenv

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DocChat - Local Voice RAG</title>
+    <style>
+        body { max-width: 800px; margin: 2rem auto; font-family: Arial, sans-serif; }
+        .chat-box { border: 1px solid #ddd; padding: 1rem; height: 400px; overflow-y: scroll; margin-bottom: 1rem; }
+        .message { margin: 0.5rem 0; padding: 0.5rem; border-radius: 5px; }
+        .user { background: #e3f2fd; text-align: right; }
+        .bot { background: #f1f1f1; }
+        .citation { font-size: 0.85rem; color: #666; margin-top: 0.5rem; }
+        .persona-select, .upload-btn, .ask-btn { margin: 0.5rem; padding: 0.5rem; }
+        audio { width: 100%; margin-top: 0.5rem; }
+        .loading { opacity: 0.8; }
+        .spinner { animation: spin 1s linear infinite; display: inline-block; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .error { color: #c00; }
+    </style>
+</head>
+<body>
+    <h1>📄 DocChat - Local Voice RAG</h1>
+
+    <div>
+        <label>Persona:
+            <select id="persona" class="persona-select">
+                <option value="student">Student (Simple)</option>
+                <option value="researcher">Researcher (Technical)</option>
+                <option value="executive">Executive (Bullet Points)</option>
+            </select>
+        </label>
+        <input type="file" id="pdfUpload" accept=".pdf" class="upload-btn">
+        <button onclick="uploadPDF()" class="ask-btn">Upload PDF</button>
+    </div>
+
+    <div class="chat-box" id="chatBox"></div>
+
+    <div>
+        <input type="text" id="question" placeholder="Ask a question about your PDF..." style="width: 70%; padding: 0.5rem;">
+        <button onclick="askQuestion()" class="ask-btn">Ask</button>
+        <button onclick="recordVoice()" class="ask-btn" id="voiceBtn">🎤 Ask via Voice</button>
+    </div>
+
+    <script>
+        // Check if browser supports Web Speech API
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let isRecording = false;
+
+        async function uploadPDF() {
+            const fileInput = document.getElementById('pdfUpload');
+            if (!fileInput.files[0]) return alert("Select a PDF first!");
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            const loadingId = addLoadingMessage('Indexing PDF... this may take a minute.');
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                removeLoadingMessage(loadingId);
+                addMessage('bot', `✅ ${data.message}`);
+            } catch (err) {
+                removeLoadingMessage(loadingId);
+                addMessage('bot', `<span class="error">Error: ${err.message}</span>`);
+            }
+        }
+
+        async function askQuestion() {
+            const question = document.getElementById('question').value;
+            const persona = document.getElementById('persona').value;
+            if (!question) return;
+
+            addMessage('user', question);
+            document.getElementById('question').value = '';
+
+            const loadingId = addLoadingMessage();
+            try {
+                const res = await fetch('/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, persona })
+                });
+                const data = await res.json();
+                removeLoadingMessage(loadingId);
+
+                // Add answer + citations + audio
+                let message = `<strong>Answer (${data.persona} mode):</strong><br>${data.answer}`;
+                if (data.citations && data.citations.length > 0) {
+                    message += `<div class="citation"><strong>Sources:</strong> `;
+                    message += data.citations.map(c => `${c.source} (Page ${c.page})`).join(', ');
+                    message += `</div>`;
+                }
+                if (data.audio_url) {
+                    message += `<br><audio controls src="${data.audio_url}"></audio>`;
+                }
+                addMessage('bot', message);
+            } catch (err) {
+                removeLoadingMessage(loadingId);
+                addMessage('bot', `<span class="error">Error: ${err.message}</span>`);
+            }
+        }
+
+        async function recordVoice() {
+            // Use browser's built-in Web Speech API (no upload, no format issues)
+            if (!SpeechRecognition) {
+                addMessage('bot', `<span class="error">Voice input is not supported in this browser. Please use Chrome or Edge.</span>`);
+                return;
+            }
+
+            if (isRecording) return; // Prevent double-click
+            isRecording = true;
+            const voiceBtn = document.getElementById('voiceBtn');
+            voiceBtn.textContent = '🎤 Listening...';
+            voiceBtn.disabled = true;
+
+            const recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            const loadingId = addLoadingMessage('Listening...');
+
+            recognition.onresult = async (event) => {
+                const transcript = event.results[0][0].transcript;
+                removeLoadingMessage(loadingId);
+                addMessage('user', `🎤 ${transcript}`);
+
+                // Send transcribed text to RAG backend
+                const persona = document.getElementById('persona').value;
+                const askLoadingId = addLoadingMessage('Thinking and generating answer...');
+                try {
+                    const res = await fetch('/ask', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ question: transcript, persona })
+                    });
+                    const data = await res.json();
+                    removeLoadingMessage(askLoadingId);
+
+                    let message = `<strong>Answer:</strong><br>${data.answer}`;
+                    if (data.citations && data.citations.length > 0) {
+                        message += `<div class="citation"><strong>Sources:</strong> `;
+                        message += data.citations.map(c => `${c.source} (Page ${c.page})`).join(', ');
+                        message += `</div>`;
+                    }
+                    if (data.audio_url) {
+                        message += `<br><audio controls src="${data.audio_url}"></audio>`;
+                    }
+                    addMessage('bot', message);
+                } catch (err) {
+                    removeLoadingMessage(askLoadingId);
+                    addMessage('bot', `<span class="error">Error: ${err.message}</span>`);
+                } finally {
+                    isRecording = false;
+                    voiceBtn.textContent = '🎤 Ask via Voice';
+                    voiceBtn.disabled = false;
+                }
+            };
+
+            recognition.onerror = (event) => {
+                removeLoadingMessage(loadingId);
+                addMessage('bot', `<span class="error">Voice error: ${event.error}. Please try again.</span>`);
+                isRecording = false;
+                voiceBtn.textContent = '🎤 Ask via Voice';
+                voiceBtn.disabled = false;
+            };
+
+            recognition.onend = () => {
+                if (isRecording) {
+                    isRecording = false;
+                    voiceBtn.textContent = '🎤 Ask via Voice';
+                    voiceBtn.disabled = false;
+                }
+            };
+
+            recognition.start();
+        }
+
+        function addMessage(sender, html) {
+            const chatBox = document.getElementById('chatBox');
+            const div = document.createElement('div');
+            div.className = `message ${sender}`;
+            div.innerHTML = html;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function addLoadingMessage(text = 'Processing...') {
+            const chatBox = document.getElementById('chatBox');
+            const div = document.createElement('div');
+            div.className = 'message bot loading';
+            div.innerHTML = `<em>${text} <span class="spinner">⏳</span></em>`;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return div;
+        }
+
+        function removeLoadingMessage(div) {
+            if (div && div.parentNode) {
+                div.parentNode.removeChild(div);
+            }
+        }
+    </script>
+</body>
+</html>
