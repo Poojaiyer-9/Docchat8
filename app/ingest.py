@@ -1,10 +1,15 @@
 import os
+import tempfile
 import chromadb
 from chromadb.utils import embedding_functions
 from pymupdf import open as pdf_open
 
-# Initialize local Chroma vector DB (stores data in ./chroma_db folder)
-client = chromadb.PersistentClient(path="./chroma_db")
+# Use a writable runtime directory. The checked-in repository directory can be
+# read-only on Streamlit Cloud, while both modules still share this path.
+chroma_path = os.environ.get(
+    "CHROMA_DB_PATH", os.path.join(tempfile.gettempdir(), "docchat_chroma_db")
+)
+client = chromadb.PersistentClient(path=chroma_path)
 
 # Chroma's bundled local embedding model (small ONNX MiniLM, downloaded once
 # from the public internet on first use). Runs on CPU, needs no API key and

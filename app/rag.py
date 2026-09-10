@@ -1,9 +1,15 @@
 from app.llm_client import generate
+import os
+import tempfile
 import chromadb
 from chromadb.utils import embedding_functions
 
-# Initialize local Chroma vector DB (same DB as ingest.py — shares the ./chroma_db folder)
-client = chromadb.PersistentClient(path="./chroma_db")
+# Use the same writable runtime directory as ingest.py. Streamlit Cloud may
+# mount the repository itself as read-only.
+chroma_path = os.environ.get(
+    "CHROMA_DB_PATH", os.path.join(tempfile.gettempdir(), "docchat_chroma_db")
+)
+client = chromadb.PersistentClient(path=chroma_path)
 # Must match the embedding function ingest.py used to build the collection.
 embedding_function = embedding_functions.DefaultEmbeddingFunction()
 collection = client.get_or_create_collection(name="docs", embedding_function=embedding_function)
