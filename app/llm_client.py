@@ -144,7 +144,11 @@ def _generate_openrouter(system_prompt: str, user_prompt: str) -> str:
             "HTTP-Referer": "https://docchat.streamlit.app",
             "X-Title": "DocChat",
         },
-        json={"model": model, "messages": _chat_messages(system_prompt, user_prompt)},
+        json={
+            "model": model,
+            "messages": _chat_messages(system_prompt, user_prompt),
+            "max_tokens": 2048,
+        },
         timeout=60,
     )
     response.raise_for_status()
