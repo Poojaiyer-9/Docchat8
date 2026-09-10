@@ -147,12 +147,21 @@ def _generate_openrouter(system_prompt: str, user_prompt: str) -> str:
         json={
             "model": model,
             "messages": _chat_messages(system_prompt, user_prompt),
-            "max_tokens": 2048,
+            "max_tokens": 4096,
+            "reasoning": {"effort": "low"},
         },
         timeout=60,
     )
     response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    message = response.json()["choices"][0]["message"]
+    content = message.get("content")
+    if isinstance(content, list):
+        content = "".join(
+            item.get("text", "") for item in content if isinstance(item, dict)
+        )
+    if not content or not content.strip():
+        raise RuntimeError("OpenRouter returned no final answer. Please try again.")
+    return content.strip()
 
 
 def _generate_openai(system_prompt: str, user_prompt: str) -> str:
